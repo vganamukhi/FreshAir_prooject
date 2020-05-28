@@ -1,0 +1,116 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(depmixS4)
+library(jsonlite)
+library(dplyr)
+library(lubridate)
+```
+
+
+```{r}
+df <- read.csv("~/python workbooks/FreshAir/sample_of_8368.csv")
+```
+
+```{r}
+head(df)
+```
+
+
+```{r}
+df$y = 'NA'
+for(i in 1:nrow(df)){
+  if (df$review_label[i] <= 3) {df$y[i] = 'clear_smoking'} 
+  else if (df$review_label[i] <= 13) {df$y[i] = 'inconclusive'}
+  else if (df$review_label[i] >= 20) {df$y[i] = 'dimissed'}
+  else {df$y[i] = 'NA'}
+  }
+```
+
+
+```{r}
+df$data <- as.character(df$data)
+final_df = data.frame()
+for(i in 1:nrow(df)) {
+  tmp <- jsonlite::fromJSON(df$data[i], flatten = TRUE) %>% as.data.frame
+  time <- as_datetime(df$timestamp[i])
+  tmp$timestamp <- as_datetime(tmp$timestamp)
+  tmp$state <- df$y[i]
+  tmp1 <- tmp %>%  
+  filter(timestamp >= time & timestamp < time + minutes(10))
+
+  #tmp1 <- data.frame()
+  #tmp1 <- data.frame("CO" = mean(tmp$CO), "RH" = mean(tmp$RH), "S1" = mean(tmp$S1),
+  #                   "S2" = mean(tmp$S2), "TP" = mean(tmp$TP), "id" = df$id[i],
+  #                   "timestamp" = df$evaluation_timestamp[i], "state" = df$y[i])
+  final_df <- rbind(final_df,tmp1)
+}
+final_df
+```
+
+
+
+
+```{r}
+#final_df[final_df <= 0] <- NA
+#final_df<- final_df[complete.cases(final_df),]
+```
+```{r}
+dis <- final_df[final_df$state == 'dimissed', ]
+smoke <- final_df[final_df$state == 'clear_smoking', ]
+incon <- final_df[final_df$state == 'inconclusive', ]
+incon
+```
+
+```{r}
+hist(dis$CO)
+hist(dis$RH)
+hist(dis$S1)
+hist(dis$S2)
+hist(dis$TP)
+```
+
+
+```{r}
+hist(smoke$CO)
+hist(smoke$RH)
+hist(smoke$S1)
+hist(smoke$S2)
+hist(smoke$TP)
+```
+
+```{r}
+clear_or_dis <- final_df[final_df$state == 'clear_smoking' | final_df$state == 'dimissed',]
+clear_or_dis[clear_or_dis<=0] <-1
+clear_or_dis[mapply(is.infinite, clear_or_dis)] <- NA
+
+clear_or_dis<-clear_or_dis[complete.cases(clear_or_dis),]
+clear_or_dis
+```
+
+
+
+
+
+```{r}
+#respnse has to be list due to mutli-variate
+#family has to be list due to multi-variate
+#shorten window??
+#mod <- depmix(list(RH ~ 1, S1 ~ 1, S2 ~ 1, TP ~ 1), data = clear_or_dis, nstates = 2, family = list(gaussian(), gaussian(),gaussian() ,gaussian()))
+mod <- depmix(CO ~ 1, data = clear_or_dis, nstates = 2, family = gaussian())
+```
+
+```{r}
+fit.mod <- fit(mod)
+est.states <- posterior(fit.mod)
+```
+```{r}
+table(est.states$state, clear_or_dis$state)
+```
+
+
+
+
+
